@@ -1,36 +1,129 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ChangeStory
 
-## Getting Started
+ChangeStory is a local, deterministic developer tool for answering a practical review question: *what changed, what might be affected, why, and what should be checked next?* It is deliberately Python-only for its first version. It does not use an LLM, modify source code, execute uploaded code, or claim complete runtime dependency analysis.
 
-First, run the development server:
+## How it works
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```text
+unified Git diff
+     │
+     ├─ parse changed files and line ranges
+     ├─ map added Python lines to built-in AST symbols
+     ├─ find conservative, direct static callers
+     ├─ attach source/diff evidence
+     ├─ apply deterministic risk and test rules
+     └─ store an exportable local report
+                 │
+                 ├─ Next.js dashboard
+                 └─ CLI summary / report URL
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The dashboard deliberately separates detected facts, potential risks, suggested tests, and actual controlled execution results.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Repository layout
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```text
+app/                 Next.js 16 dashboard and report route
+backend/app/         FastAPI API, diff parser, AST engine, reports, runner
+backend/tests/       Unit, integration, and runner-boundary tests
+cli/                 Installable `changestory analyze` command
+sample-project/      Only repository that the verification runner can execute
+fixtures/diffs/      Three deterministic demo diffs
+reports/             Generated JSON/Markdown reports (ignored by Git)
+```
 
-## Learn More
+## Requirements
 
-To learn more about Next.js, take a look at the following resources:
+- Node.js 20.9+ (tested with Node 20.20)
+- Python 3.11+ (tested with Python 3.14)
+- No API key, database, account, or cloud service
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Install and run
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Install the backend and CLI once:
 
-## Deploy on Vercel
+```powershell
+cd backend
+python -m pip install -e ".[dev]"
+cd ..\cli
+python -m pip install -e .
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Start the two local services in separate terminals:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```powershell
+# terminal 1, from repository root
+cd backend
+python -m uvicorn app.main:app --reload --port 8000
+
+# terminal 2, from repository root
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). Select one of the three demo scenarios or paste a unified Git diff. The browser always analyzes against `sample-project`.
+
+## CLI
+
+With the API running, analyze current Git changes or a diff file:
+
+```powershell
+changestory analyze --repo C:\path\to\your\python-repo
+changestory analyze --repo . --diff-file fixtures\diffs\calculation.diff --no-browser
+```
+
+The CLI sends analysis input to the local API and opens the frontend report URL. It does not duplicate analysis logic.
+
+## Demo scenarios
+
+1. **Calculation change** — `calculate_total` changes; direct callers, a focused test reference, and shared-impact evidence are displayed.
+2. **API handler change** — `get_price_summary` changes; the report suggests an integration-level check.
+3. **Shared utility change** — `normalize_label` changes; consumers in catalog and notifications show broader impact.
+
+## API
+
+- `GET /health`
+- `POST /api/v1/analyze` with `{ "diff_text": "...", "source_mode": "sample" }`
+- `GET /api/v1/reports/{session_id}`
+- `GET /api/v1/reports/{session_id}/export.json`
+- `GET /api/v1/reports/{session_id}/export.md`
+- `POST /api/v1/reports/{session_id}/verify`
+
+Next.js serves the user-facing report at `/report/{session_id}`.
+
+## Tests and checks
+
+```powershell
+cd backend
+python -m pytest -q
+
+cd ..
+npm run lint
+npm run build
+```
+
+The backend tests cover unified-diff parsing, AST/change mapping, caller evidence, report exports, API health, and the fact that verification accepts no user-provided command. The dashboard uses its real FastAPI response at runtime and is checked by TypeScript/ESLint and a production build.
+
+## Security model
+
+Analysis can read a local Python source tree for the CLI workflow, but execution is intentionally much narrower: verification uses one hard-coded `python -m pytest -q` argument list, `shell=False`, a 30-second timeout, and the bundled `sample-project` working directory. The frontend exposes neither command nor path controls for verification. Reports use opaque hash-derived IDs and no secrets are stored.
+
+## Intentional limitations
+
+- Python syntax and conservative static direct calls only; dynamic imports, reflection, dispatch, and runtime dependencies are not resolved.
+- Test matching is a static reference heuristic, not coverage proof.
+- Browser demos are tied to the bundled controlled sample project.
+- A potential risk is a review signal, never a confirmed defect.
+
+Python-only keeps the proof of concept dependable, inspectable, and easy to extend without pretending every language has the same analysis guarantees.
+
+## Troubleshooting
+
+- **Dashboard says service unavailable:** start FastAPI on port 8000, or set `NEXT_PUBLIC_CHANGESTORY_API` before starting Next.js.
+- **CLI cannot connect:** verify `http://127.0.0.1:8000/health` and use `--api-url` if your port differs.
+- **No symbols map:** ensure changed paths in the diff match Python paths in the selected repository and changed lines are present in the current source.
+- **CLI is not on PATH on Windows:** use `python -m changestory_cli.main analyze ...` from `cli/`, or add your user Python Scripts directory to PATH.
+
+## Hackathon evidence
+
+`bob_sessions/` is an empty placeholder. Screenshots and evidence must be captured by the human team during a real demo; ChangeStory does not fabricate Bob sessions, screenshots, source evidence, or test outcomes.

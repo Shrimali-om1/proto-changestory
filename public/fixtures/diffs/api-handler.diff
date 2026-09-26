@@ -1,0 +1,11 @@
+diff --git a/changestory_sample/api.py b/changestory_sample/api.py
+index 1111111..2222222 100644
+--- a/changestory_sample/api.py
++++ b/changestory_sample/api.py
+@@ -1,5 +1,6 @@
+ from .pricing import calculate_total
+ 
+ def get_price_summary(price: float, tax_rate: float) -> dict[str, float]:
+     """Small handler-shaped function for the API demo scenario."""
++    # The handler now surfaces the controlled calculation result.
+     return {"total": calculate_total(price, tax_rate)}

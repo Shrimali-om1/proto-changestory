@@ -1,0 +1,2 @@
+[console_scripts]
+changestory = changestory_cli.main:main
